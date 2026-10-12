@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reference photo crop labeler</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; font-family: -apple-system, system-ui, sans-serif;
+    background: #1b1b1f; color: #e8e8ec; height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    padding: 10px 16px; background: #24242b; border-bottom: 1px solid #35353d;
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; color: #fff; }
+  header p { margin: 0; font-size: 12px; color: #9a9aa5; }
+  button {
+    background: #35353f; color: #e8e8ec; border: 1px solid #46464f; border-radius: 6px;
+    padding: 6px 12px; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: #40404b; }
+  button.primary { background: #3d5ea8; border-color: #4a6dc0; }
+  button.primary:hover { background: #4569b8; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  input[type=text] {
+    background: #16161a; color: #e8e8ec; border: 1px solid #46464f; border-radius: 5px;
+    padding: 4px 8px; font-size: 13px;
+  }
+  #main { flex: 1; display: flex; min-height: 0; }
+  #filelist {
+    width: 220px; overflow-y: auto; background: #1f1f24; border-right: 1px solid #35353d;
+    flex-shrink: 0;
+  }
+  #filelist .slug-head {
+    padding: 8px 10px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+    color: #7a7a85;
+  }
+  #filelist .file-item {
+    padding: 6px 10px; font-size: 12px; cursor: pointer; display: flex; align-items: center;
+    gap: 6px; border-left: 3px solid transparent; word-break: break-all;
+  }
+  #filelist .file-item:hover { background: #2a2a31; }
+  #filelist .file-item.active { background: #2c3550; border-left-color: #5b7fd4; }
+  #filelist .file-item .count {
+    margin-left: auto; background: #3d5ea8; color: #fff; border-radius: 8px; font-size: 10px;
+    padding: 1px 6px; flex-shrink: 0;
+  }
+  #stage {
+    flex: 1; display: flex; align-items: center; justify-content: center; position: relative;
+    overflow: auto; padding: 20px; background:
+      repeating-conic-gradient(#222 0% 25%, #262626 0% 50%) 50% / 24px 24px;
+  }
+  #imgwrap { position: relative; display: inline-block; line-height: 0; user-select: none; touch-action: none; }
+  #imgwrap img { display: block; max-width: min(78vw, 1100px); max-height: 78vh; }
+  .crop-box {
+    position: absolute; border: 2px solid #ffd54a; box-shadow: 0 0 0 1px rgba(0,0,0,.5);
+    box-sizing: border-box; pointer-events: none;
+  }
+  .crop-box .tag {
+    position: absolute; top: -20px; left: -2px; background: #ffd54a; color: #1b1b1f;
+    font-size: 11px; padding: 1px 5px; border-radius: 3px; white-space: nowrap; font-weight: 600;
+  }
+  .crop-box.pending { border-color: #5bd48a; border-style: dashed; }
+  #labelpopup {
+    position: absolute; background: #24242b; border: 1px solid #46464f; border-radius: 6px;
+    padding: 6px; display: flex; gap: 6px; box-shadow: 0 4px 16px rgba(0,0,0,.5); z-index: 5;
+  }
+  #sidebar {
+    width: 280px; flex-shrink: 0; background: #1f1f24; border-left: 1px solid #35353d;
+    display: flex; flex-direction: column; min-height: 0;
+  }
+  #croplist { flex: 1; overflow-y: auto; padding: 8px; }
+  #croplist .crop-row {
+    display: flex; align-items: center; gap: 6px; padding: 5px 4px; font-size: 12px;
+    border-bottom: 1px solid #2a2a31;
+  }
+  #croplist .crop-row input[type=text] { flex: 1; min-width: 0; }
+  #croplist .crop-row .del { color: #d46a6a; border-color: #5a3a3a; padding: 2px 7px; }
+  #croplist .empty { color: #7a7a85; font-size: 12px; padding: 10px; }
+  #exportbox { border-top: 1px solid #35353d; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  #script { width: 100%; height: 140px; background: #101013; color: #b8e6b8; font: 11px/1.4 ui-monospace, monospace;
+    border: 1px solid #35353d; border-radius: 6px; padding: 8px; resize: vertical; box-sizing: border-box; }
+  .row { display: flex; gap: 8px; }
+  #dropzone {
+    border: 2px dashed #46464f; border-radius: 8px; padding: 40px; text-align: center; color: #9a9aa5;
+    max-width: 480px; margin: auto;
+  }
+  #dropzone.drag { border-color: #5b7fd4; color: #cdd8f5; }
+  small.hint { color: #7a7a85; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Reference photo crop labeler</h1>
+  <p>Pick <code>reference-photos/</code> once, drag rectangle crops on each photo, label them, then run the generated script.</p>
+  <span style="flex:1"></span>
+  <label class="row" style="align-items:center; cursor:pointer;">
+    <input id="picker" type="file" webkitdirectory multiple style="display:none">
+    <button id="pickbtn" class="primary">Choose reference-photos folder&hellip;</button>
+  </label>
+  <button id="prevbtn" disabled>&larr; Prev</button>
+  <button id="nextbtn" disabled>Next &rarr;</button>
+</header>
+
+<div id="main">
+  <div id="filelist"></div>
+
+  <div id="stage">
+    <div id="dropzone">
+      Choose the <code>reference-photos</code> folder above (or drag it here) to get started.<br><br>
+      <small class="hint">Everything happens in this tab &mdash; no files are uploaded anywhere.</small>
+      <div id="restorenote" style="display:none; margin-top:16px; font-size:12px; color:#cdd8f5;"></div>
+      <div style="margin-top:12px;">
+        <button id="reconnectbtn" class="primary" style="display:none">Reconnect to reference-photos folder</button>
+      </div>
+    </div>
+    <div id="imgwrap" style="display:none">
+      <img id="curimg" draggable="false">
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div id="croplist"><div class="empty">No crops yet. Drag a rectangle on the photo to start.</div></div>
+    <div id="exportbox">
+      <div class="row">
+        <button id="genbtn" class="primary" style="flex:1" disabled>Generate script</button>
+      </div>
+      <textarea id="script" placeholder="Generated shell script appears here&hellip;" readonly></textarea>
+      <div class="row">
+        <button id="copybtn" style="flex:1" disabled>Copy</button>
+        <button id="downloadbtn" style="flex:1" disabled>Download .sh</button>
+      </div>
+      <small class="hint">Runs <code>magick</code> crops into <code>reference-photos-cropped/&lt;slug&gt;/</code>. Execute from the repo root.</small>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- state -------------------------------------------------------------
+  // Crops are keyed by relPath (not array index) so they survive a reload and
+  // reattach correctly even if the folder is re-picked in a different order.
+  const files = [];   // { relPath, slug, name, url, naturalWidth, naturalHeight }
+  const crops = loadCropsFromStorage(); // { relPath, x, y, width, height, label } -- in natural px
+  let currentIndex = -1;
+  let pending = null; // { startX, startY, x, y, width, height } in displayed px, while dragging
+
+  const CROPS_KEY = "crop-labeler:crops";
+  function loadCropsFromStorage() {
+    try { return JSON.parse(localStorage.getItem("crop-labeler:crops")) || []; }
+    catch (e) { return []; }
+  }
+  function saveCropsToStorage() {
+    localStorage.setItem(CROPS_KEY, JSON.stringify(crops));
+  }
+
+  const el = (id) => document.getElementById(id);
+  const picker = el("picker"), pickbtn = el("pickbtn");
+  const filelist = el("filelist"), stage = el("stage"), dropzone = el("dropzone");
+  const imgwrap = el("imgwrap"), curimg = el("curimg");
+  const croplist = el("croplist");
+  const prevbtn = el("prevbtn"), nextbtn = el("nextbtn");
+  const genbtn = el("genbtn"), scriptBox = el("script"), copybtn = el("copybtn"), downloadbtn = el("downloadbtn");
+  const reconnectBtn = el("reconnectbtn"), restorenote = el("restorenote");
+
+  if (crops.length) {
+    restorenote.style.display = "";
+    restorenote.textContent = `${crops.length} crop${crops.length === 1 ? "" : "s"} restored from your last session.`;
+  }
+
+  // ---- IndexedDB: remembers the picked directory handle across reloads ----
+  // (Chrome/Edge only; other browsers just fall back to re-picking the folder.)
+  function idbOpen() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open("crop-labeler", 1);
+      req.onupgradeneeded = () => req.result.createObjectStore("handles");
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+  async function idbSet(key, value) {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("handles", "readwrite");
+      tx.objectStore("handles").put(value, key);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  }
+  async function idbGet(key) {
+    const db = await idbOpen();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction("handles", "readonly");
+      const req = tx.objectStore("handles").get(key);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  // ---- loading files ------------------------------------------------------
+  const supportsFsAccess = "showDirectoryPicker" in window;
+
+  pickbtn.addEventListener("click", async () => {
+    if (!supportsFsAccess) { picker.click(); return; }
+    try {
+      const handle = await window.showDirectoryPicker();
+      await idbSet("root", handle);
+      await loadFromHandle(handle);
+    } catch (e) {
+      if (e.name !== "AbortError") console.error(e);
+    }
+  });
+  picker.addEventListener("change", (e) => loadFileList(e.target.files));
+
+  async function walkHandle(dirHandle, prefix, out) {
+    for await (const [name, handle] of dirHandle.entries()) {
+      if (handle.kind === "file") {
+        const f = await handle.getFile();
+        f._relPath = prefix + name;
+        out.push(f);
+      } else if (handle.kind === "directory") {
+        await walkHandle(handle, prefix + name + "/", out);
+      }
+    }
+  }
+
+  async function loadFromHandle(rootHandle) {
+    const collected = [];
+    await walkHandle(rootHandle, rootHandle.name + "/", collected);
+    await loadFileList(collected);
+  }
+
+  async function tryReconnect() {
+    let handle;
+    try { handle = await idbGet("root"); } catch (e) { return; }
+    if (!handle) return;
+    reconnectBtn.style.display = "";
+    reconnectBtn.onclick = async () => {
+      reconnectBtn.disabled = true;
+      reconnectBtn.textContent = "Reconnecting…";
+      try {
+        const perm = await handle.queryPermission({ mode: "read" });
+        const granted = perm === "granted" ? true : (await handle.requestPermission({ mode: "read" })) === "granted";
+        if (granted) await loadFromHandle(handle);
+        else { reconnectBtn.disabled = false; reconnectBtn.textContent = "Reconnect to reference-photos folder"; }
+      } catch (e) {
+        console.error(e);
+        reconnectBtn.disabled = false;
+        reconnectBtn.textContent = "Reconnect to reference-photos folder";
+      }
+    };
+    // Permission already granted from a prior visit: skip the extra click.
+    try {
+      if ((await handle.queryPermission({ mode: "read" })) === "granted") reconnectBtn.onclick();
+    } catch (e) { /* ignore */ }
+  }
+
+  ["dragenter", "dragover"].forEach(evt =>
+    dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach(evt =>
+    dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.remove("drag"); }));
+  dropzone.addEventListener("drop", async (e) => {
+    const items = e.dataTransfer.items;
+    if (!items || !items.length) return;
+    const collected = [];
+    for (const item of items) {
+      const entry = item.webkitGetAsEntry && item.webkitGetAsEntry();
+      if (entry) await walkEntry(entry, "", collected);
+    }
+    if (collected.length) loadFileList(collected);
+  });
+
+  function walkEntry(entry, prefix, out) {
+    return new Promise((resolve) => {
+      if (entry.isFile) {
+        entry.file((f) => {
+          f._relPath = prefix + entry.name;
+          out.push(f);
+          resolve();
+        });
+      } else if (entry.isDirectory) {
+        const reader = entry.createReader();
+        const all = [];
+        const readBatch = () => {
+          reader.readEntries(async (batch) => {
+            if (!batch.length) {
+              for (const child of all) await walkEntry(child, prefix + entry.name + "/", out);
+              resolve();
+            } else {
+              all.push(...batch);
+              readBatch();
+            }
+          });
+        };
+        readBatch();
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  function isImage(name) { return /\.(jpe?g|png|heic|webp)$/i.test(name); }
+
+  async function loadFileList(fileList) {
+    const picked = Array.from(fileList).filter((f) => isImage(f.webkitRelativePath || f._relPath || f.name));
+    if (!picked.length) return;
+
+    // A (re)pick replaces the whole file list rather than appending to it.
+    files.forEach((f) => URL.revokeObjectURL(f.url));
+    files.length = 0;
+
+    for (const f of picked) {
+      const rawPath = f.webkitRelativePath || f._relPath || f.name;
+      // Canonicalize to "reference-photos/<slug>/<filename>" regardless of how
+      // deep a path the browser handed back (drag a slug folder directly, drag
+      // reference-photos/ itself, drag its grandparent...) — the innermost two
+      // segments are always slug/filename, so anchoring on those makes the
+      // generated script's paths correct no matter where it's run from.
+      const parts = rawPath.split("/");
+      const name = parts[parts.length - 1];
+      const slug = parts.length >= 2 ? parts[parts.length - 2] : "unknown";
+      const relPath = `reference-photos/${slug}/${name}`;
+      const url = URL.createObjectURL(f);
+      const dims = await loadDims(url);
+      files.push({
+        relPath, slug, name, url,
+        naturalWidth: dims.w, naturalHeight: dims.h,
+      });
+    }
+
+    files.sort((a, b) => a.relPath.localeCompare(b.relPath));
+    dropzone.style.display = "none";
+    imgwrap.style.display = "";
+    renderFileList();
+    showImage(0);
+  }
+
+  function loadDims(url) {
+    return new Promise((resolve) => {
+      const im = new Image();
+      im.onload = () => resolve({ w: im.naturalWidth, h: im.naturalHeight });
+      im.src = url;
+    });
+  }
+
+  // ---- file list sidebar --------------------------------------------------
+  function renderFileList() {
+    filelist.innerHTML = "";
+    let lastSlug = null;
+    files.forEach((f, i) => {
+      if (f.slug !== lastSlug) {
+        const head = document.createElement("div");
+        head.className = "slug-head";
+        head.textContent = f.slug;
+        filelist.appendChild(head);
+        lastSlug = f.slug;
+      }
+      const item = document.createElement("div");
+      item.className = "file-item" + (i === currentIndex ? " active" : "");
+      const n = crops.filter((c) => c.relPath === f.relPath).length;
+      item.innerHTML = `<span>${f.name}</span>` + (n ? `<span class="count">${n}</span>` : "");
+      item.addEventListener("click", () => showImage(i));
+      filelist.appendChild(item);
+    });
+  }
+
+  function showImage(i) {
+    if (i < 0 || i >= files.length) return;
+    pending = null;
+    hideLabelPopup();
+    currentIndex = i;
+    curimg.src = files[i].url;
+    prevbtn.disabled = i === 0;
+    nextbtn.disabled = i === files.length - 1;
+    renderFileList();
+    renderCropOverlays();
+    renderCropList();
+  }
+  prevbtn.addEventListener("click", () => showImage(currentIndex - 1));
+  nextbtn.addEventListener("click", () => showImage(currentIndex + 1));
+  document.addEventListener("keydown", (e) => {
+    if (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA") return;
+    if (e.key === "ArrowRight") showImage(currentIndex + 1);
+    if (e.key === "ArrowLeft") showImage(currentIndex - 1);
+  });
+
+  // ---- drawing crop boxes ---------------------------------------------------
+  function displayRect() { return curimg.getBoundingClientRect(); }
+
+  imgwrap.addEventListener("pointerdown", (e) => {
+    if (currentIndex < 0) return;
+    hideLabelPopup();
+    const r = displayRect();
+    const startX = clamp(e.clientX - r.left, 0, r.width);
+    const startY = clamp(e.clientY - r.top, 0, r.height);
+    pending = { startX, startY, x: startX, y: startY, width: 0, height: 0 };
+    imgwrap.setPointerCapture(e.pointerId);
+    renderCropOverlays();
+  });
+
+  imgwrap.addEventListener("pointermove", (e) => {
+    if (!pending) return;
+    const r = displayRect();
+    const curX = clamp(e.clientX - r.left, 0, r.width);
+    const curY = clamp(e.clientY - r.top, 0, r.height);
+    pending.x = Math.min(pending.startX, curX);
+    pending.y = Math.min(pending.startY, curY);
+    pending.width = Math.abs(curX - pending.startX);
+    pending.height = Math.abs(curY - pending.startY);
+    renderCropOverlays();
+  });
+
+  imgwrap.addEventListener("pointerup", (e) => {
+    if (!pending) return;
+    imgwrap.releasePointerCapture(e.pointerId);
+    if (pending.width < 8 || pending.height < 8) { pending = null; renderCropOverlays(); return; }
+    showLabelPopup(pending);
+  });
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  function displayToNatural(box) {
+    const r = displayRect();
+    const f = files[currentIndex];
+    const scaleX = f.naturalWidth / r.width;
+    const scaleY = f.naturalHeight / r.height;
+    return {
+      x: Math.round(box.x * scaleX),
+      y: Math.round(box.y * scaleY),
+      width: Math.round(box.width * scaleX),
+      height: Math.round(box.height * scaleY),
+    };
+  }
+
+  function naturalToDisplayPct(box) {
+    const f = files[currentIndex];
+    return {
+      left: (box.x / f.naturalWidth) * 100,
+      top: (box.y / f.naturalHeight) * 100,
+      width: (box.width / f.naturalWidth) * 100,
+      height: (box.height / f.naturalHeight) * 100,
+    };
+  }
+
+  function renderCropOverlays() {
+    imgwrap.querySelectorAll(".crop-box").forEach((n) => n.remove());
+    if (currentIndex < 0) return;
+    crops.filter((c) => c.relPath === files[currentIndex].relPath).forEach((c) => {
+      const pct = naturalToDisplayPct(c);
+      const box = document.createElement("div");
+      box.className = "crop-box";
+      box.style.left = pct.left + "%"; box.style.top = pct.top + "%";
+      box.style.width = pct.width + "%"; box.style.height = pct.height + "%";
+      box.innerHTML = `<span class="tag">${escapeHtml(c.label)}</span>`;
+      imgwrap.appendChild(box);
+    });
+    if (pending) {
+      const r = displayRect();
+      const box = document.createElement("div");
+      box.className = "crop-box pending";
+      box.style.left = (pending.x / r.width * 100) + "%";
+      box.style.top = (pending.y / r.height * 100) + "%";
+      box.style.width = (pending.width / r.width * 100) + "%";
+      box.style.height = (pending.height / r.height * 100) + "%";
+      imgwrap.appendChild(box);
+    }
+  }
+
+  // ---- label popup ---------------------------------------------------------
+  let popupEl = null;
+  function showLabelPopup(box) {
+    hideLabelPopup();
+    const r = displayRect();
+    popupEl = document.createElement("div");
+    popupEl.id = "labelpopup";
+    popupEl.style.left = (box.x + box.width + 8) + "px";
+    popupEl.style.top = box.y + "px";
+    popupEl.innerHTML = `
+      <input type="text" placeholder="e.g. nora face" autofocus>
+      <button class="primary">Add</button>
+      <button class="cancel">&times;</button>`;
+    imgwrap.appendChild(popupEl);
+    const input = popupEl.querySelector("input");
+    input.focus();
+    const commit = () => {
+      const label = input.value.trim();
+      if (!label) return;
+      const nat = displayToNatural(box);
+      crops.push({ relPath: files[currentIndex].relPath, x: nat.x, y: nat.y, width: nat.width, height: nat.height, label });
+      saveCropsToStorage();
+      pending = null;
+      hideLabelPopup();
+      renderCropOverlays();
+      renderCropList();
+      renderFileList();
+      updateExportButtons();
+    };
+    popupEl.querySelector(".primary").addEventListener("click", commit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") commit();
+      if (e.key === "Escape") { pending = null; hideLabelPopup(); renderCropOverlays(); }
+    });
+    popupEl.querySelector(".cancel").addEventListener("click", () => {
+      pending = null; hideLabelPopup(); renderCropOverlays();
+    });
+  }
+  function hideLabelPopup() { if (popupEl) { popupEl.remove(); popupEl = null; } }
+
+  // ---- crop list sidebar ---------------------------------------------------
+  function renderCropList() {
+    const curPath = currentIndex >= 0 ? files[currentIndex].relPath : null;
+    const mine = crops.map((c, i) => ({ c, i })).filter(({ c }) => c.relPath === curPath);
+    if (!mine.length) {
+      croplist.innerHTML = '<div class="empty">No crops on this photo yet. Drag a rectangle on it to start.</div>';
+      return;
+    }
+    croplist.innerHTML = "";
+    mine.forEach(({ c, i }) => {
+      const row = document.createElement("div");
+      row.className = "crop-row";
+      row.innerHTML = `<input type="text" value="${escapeAttr(c.label)}"><button class="del">&times;</button>`;
+      row.querySelector("input").addEventListener("input", (e) => {
+        c.label = e.target.value; renderCropOverlays(); saveCropsToStorage(); updateExportButtons();
+      });
+      row.querySelector(".del").addEventListener("click", () => {
+        crops.splice(i, 1);
+        saveCropsToStorage();
+        renderCropOverlays(); renderCropList(); renderFileList(); updateExportButtons();
+      });
+      croplist.appendChild(row);
+    });
+  }
+
+  function escapeHtml(s) { return s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c])); }
+  function escapeAttr(s) { return escapeHtml(s).replace(/"/g, "&quot;"); }
+
+  // ---- export ---------------------------------------------------------------
+  function slugify(s) {
+    return s.toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "crop";
+  }
+
+  function slugFromRelPath(relPath) {
+    const parts = relPath.split("/");
+    return parts.length >= 2 ? parts[parts.length - 2] : "unknown";
+  }
+
+  // The emitted script must `cd` to an absolute repo root — a relative path
+  // kept landing its output wherever the terminal happened to be cd'd to
+  // (reference-photos/, its parent, ...) instead of the root every path below
+  // assumes. Derived from where this file itself lives, so the emitted script's
+  // `cd` is the checkout it was opened from rather than a path baked in on one
+  // laptop. `new URL("..", …)` on a file:// URL resolves the parent directory,
+  // which is the repo root — this file is tools/crop-labeler.html. Falls back
+  // to the current directory if the page's own URL is somehow opaque.
+  const REPO_ROOT = (() => {
+    try {
+      return decodeURIComponent(new URL("..", location.href).pathname)
+        .replace(/\/$/, "") || ".";
+    } catch (e) {
+      return ".";
+    }
+  })();
+
+  function buildScript() {
+    const lines = ["#!/bin/bash", "set -euo pipefail", "", `cd "${REPO_ROOT}"`, ""];
+    const slugDirs = new Set();
+    const nameCounts = new Map(); // "slug/basename" -> count
+
+    crops.forEach((c) => slugDirs.add(slugFromRelPath(c.relPath)));
+    Array.from(slugDirs).sort().forEach((slug) => {
+      lines.push(`mkdir -p "reference-photos-cropped/${slug}"`);
+    });
+    lines.push("");
+
+    crops.forEach((c) => {
+      const slug = slugFromRelPath(c.relPath);
+      const base = slugify(c.label);
+      const key = slug + "/" + base;
+      const n = (nameCounts.get(key) || 0) + 1;
+      nameCounts.set(key, n);
+      const outName = n === 1 ? base : `${base}-${n}`;
+      const outPath = `reference-photos-cropped/${slug}/${outName}.jpg`;
+      lines.push(
+        `magick "${c.relPath}" -crop ${c.width}x${c.height}+${c.x}+${c.y} +repage "${outPath}"`
+      );
+    });
+    return lines.join("\n") + "\n";
+  }
+
+  function updateExportButtons() {
+    const has = crops.length > 0;
+    genbtn.disabled = !has;
+  }
+
+  genbtn.addEventListener("click", () => {
+    scriptBox.value = buildScript();
+    copybtn.disabled = false;
+    downloadbtn.disabled = false;
+  });
+  copybtn.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(scriptBox.value);
+    copybtn.textContent = "Copied!";
+    setTimeout(() => (copybtn.textContent = "Copy"), 1200);
+  });
+  downloadbtn.addEventListener("click", () => {
+    const blob = new Blob([scriptBox.value], { type: "text/x-sh" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "crop-refs.sh";
+    a.click();
+  });
+
+  updateExportButtons();
+  if (supportsFsAccess) tryReconnect();
+})();
+</script>
+</body>
+</html>

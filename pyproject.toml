@@ -1,0 +1,23 @@
+[project]
+name = "bookgen"
+version = "0.0.0"
+description = "Deterministic illustration pipeline for picture books"
+requires-python = ">=3.11"
+
+# Pinned exactly, and resolved into uv.lock. The pipeline used to run through
+# `uv run --with pyyaml`, which floats whatever pyyaml is newest on the day —
+# fine on one laptop, a parity bug the moment a second machine has to produce
+# byte-identical prompts.
+#
+# fonttools is only imported by `pdf --lulu` (embedding Helvetica for the Lulu
+# upload file). It is a plain dependency rather than an optional extra so that
+# `uv run`, the Docker image and the VPS all resolve the same environment with
+# no extra flag to remember.
+dependencies = [
+    "pyyaml==6.0.3",
+    "fonttools==4.66.1",
+]
+
+[tool.uv]
+# Not a package: this is one script plus data, nothing to install or import.
+package = false

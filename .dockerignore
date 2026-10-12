@@ -1,0 +1,23 @@
+# What the image build does NOT need. The image is the tool plus its locked
+# dependencies; the books and their renders are mounted at run time.
+.git
+.gitignore
+.env
+
+# Never baked into an image: the reference photos of real people.
+reference-photos
+reference-photos-cropped
+
+# Renders, proofs and caches — hundreds of MB, and regenerable. picks.json is
+# the exception below: it is a decision, not output, and `pdf`/`html`/`publish`
+# all need it.
+books/*/out/runs
+books/*/out/refcache
+books/*/out/prompts
+books/*/out/dryrun
+books/*/out/*.pdf
+books/*/out/*.html
+
+__pycache__
+.venv
+.DS_Store

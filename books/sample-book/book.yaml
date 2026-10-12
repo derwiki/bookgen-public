@@ -1,0 +1,329 @@
+# ============================================================
+# The Sample Book — art spec
+# SINGLE SOURCE OF TRUTH. Edit here, never in a prompt.
+# Change a guardrail once, re-roll all pages consistently.
+#
+# This book exists to be copied. It is a small, complete, runnable example of
+# every part of a book.yaml: the style contract, a cast with reference photos,
+# sibling pair rules, lighting, shared context rules, a manuscript mirror,
+# illustration slots, and one diagram. Its characters are invented and its
+# reference images are synthetic placeholders drawn with flat shapes, so
+# nothing here is anybody's likeness.
+#
+#   uv run ./bookgen.py --book sample-book compile        # free, read this
+#   uv run ./bookgen.py --book sample-book gen --dry-run  # free
+#   uv run ./bookgen.py --book sample-book pdf            # free proof
+#
+# Then copy the directory, rename the slug, and replace everything below.
+# ============================================================
+
+model: gemini-3.1-flash-image
+aspect_ratio: "3:2"          # landscape; 1264x848 @1K, 5056x3392 @4K
+# US Letter Landscape (792x612 pts). Setting `trim:` also mats art pages inside
+# the page margin, so art never touches a page edge and the file stays in
+# Lulu's exact-trim, no-bleed-needed category. Without it the page keeps the
+# 8-in width and takes its height from `aspect_ratio:`.
+trim: "11x8.5"
+# Which side of the spread carries the art. Omitted here, so the default
+# applies: prose verso / art recto. `spread: art-left` mirrors it.
+# spread: art-left
+draft_size: "1K"
+final_size: "4K"
+thinking_level: high         # complex composition; minimal is the default
+
+# Order of this book in the bucket-root index. Lower sorts first.
+sequence: 1
+
+# ------------------------------------------------------------
+# FRONT MATTER — read by `bookgen.py pdf`, `html` and `cover`; never sent to
+# the model. Empty values are skipped. The title page also does structural
+# work: one page ahead of the story is what lands every prose page on the
+# left of a spread with its illustration facing it on the right.
+# ------------------------------------------------------------
+# Where `publish` puts this book in the S3 bucket. Spelled out, never derived
+# from the title: the title is prose and may change, the prefix is a URL that
+# has already been shared.
+publish:
+  slug: sample-book
+
+front_matter:
+  title: The Sample Book
+  byline: "By A. N. Author"
+  # `|` keeps the line breaks; they ARE the layout here. A folded `>` block
+  # would collapse them into one paragraph.
+  dedication: |
+    For everyone learning to build one of these.
+  description: >
+    A rainy morning, two children, and the science question hiding behind it:
+    where does the water go after the rain stops? Nora and her little brother
+    Milo follow the puddles down the block and find out.
+  cover: p01        # the slot painted above the title on the wraparound cover
+
+# ------------------------------------------------------------
+# Reference images. The model ceiling is 4 refs per request — the budget
+# below is built to land exactly on it:
+#
+#   up to 3 photo refs (from cast) + 1 style ref (from ref_policy) = 4
+#
+# char_refs attach automatically from each page's `cast`. Anything in `refs`
+# attaches only when a page lists it in extra_refs, or via ref_policy.
+#
+# THE PATHS ARE THE CONVENTION: `../../reference-photos/<slug>/` is where a
+# real project keeps its photos, and both photo trees are gitignored — they
+# are people's likenesses. The sample's two files are tracked on purpose (see
+# the exception in .gitignore) because they are synthetic placeholders, not
+# photographs of anyone.
+# ------------------------------------------------------------
+char_refs:
+  nora: ../../reference-photos/sample-book/nora.png
+  milo: ../../reference-photos/sample-book/milo.png
+
+# Style anchors and continuity anchors, harvested from locked pages. Missing
+# files are skipped with a warning, so the pipeline runs before any exist.
+refs:
+  CLOSE: refs/style-close.jpg
+  MID:   refs/style-mid.jpg
+  WIDE:  refs/style-wide.jpg
+  # A continuity anchor is a locked render copied straight out of a run, e.g.
+  #   CREEK: refs/locked_p04_creek.jpg
+  # and then listed on later pages in `extra_refs:`.
+
+# One style ref per camera distance. Kept to one because the photo refs spend
+# most of the budget; this is the first thing dropped if a page goes over the
+# ceiling.
+ref_policy:
+  CLOSE: [CLOSE]
+  MID:   [MID]
+  WIDE:  [WIDE]
+
+# ------------------------------------------------------------
+# Style contract — prepended to every prompt
+# ------------------------------------------------------------
+style: >
+  A warm watercolor children's picture-book illustration, soft pencil linework,
+  warm saturated palette. Horizontal landscape orientation. The painting is
+  full-bleed: it reaches all four edges of the frame, with no blank, flat, or
+  unpainted band at the bottom or anywhere else.
+
+ref_instruction: >
+  Use the attached images as references only. From the photos of the two
+  children, match face shape, skin tone, hair colour and eye shape; from the
+  style plates, match the soft watercolor rendering and the warm palette.
+  Ignore the references' poses, clothing and settings. The text below gives
+  each child's age and outfit for this scene and THE TEXT WINS on those.
+
+review_checklist: >
+  Check: Nora and Milo are recognizably themselves and each other's siblings —
+  same light-tan skin, same dark brown hair — while Milo stays clearly smaller
+  and younger; each keeps one signature raincoat colour (Nora yellow, Milo
+  blue) page to page; the wet ground reads the same way throughout. Ignore
+  hair parting side, which hand, prop details.
+
+negatives: >
+  No text, letters, numbers, or signage anywhere. No sparkles, watermarks, or
+  logos. One single image — no grids, no side-by-side variants, no captions.
+
+# ------------------------------------------------------------
+# Diagrams. `diagram_style:` is the schematic default; a single diagram can
+# opt out of it with `style:` naming an entry in `diagram_styles:`.
+# ------------------------------------------------------------
+diagram_style: >
+  A clean hand-drawn children's science diagram: flat shapes in a warm
+  watercolor palette, soft pencil outlines, simple hand-lettered labels.
+  Horizontal landscape orientation, plain off-white background, generous
+  white space, one clear idea.
+
+diagrams:
+  D1:
+    pages: [3]                 # the manuscript page it explains
+    label: "The water cycle"
+    scene: >
+      The water cycle as a simple looping diagram. A wide blue lake across
+      the bottom of the frame; a bright sun in the upper left; three thin
+      orange arrows rising from the lake as wispy steam and gathering into
+      two soft grey clouds in the upper right; rain falling from the clouds
+      as short blue dashes onto a green hillside on the right; a small stream
+      running from the hillside back down into the lake. Four hand-lettered
+      labels: "evaporation" beside the rising arrows, "condensation" beside
+      the clouds, "precipitation" beside the rain, "collection" beside the
+      lake. Exactly these four labels, spelled correctly.
+
+# ------------------------------------------------------------
+# Character sheet. `desc` is the character's standing description: it is
+# appended to every prompt that casts them, so it must not name anything that
+# changes from page to page. Put scene-specific clothing in the page's
+# `scene:` text instead.
+# ------------------------------------------------------------
+characters:
+  nora:
+    desc: >
+      7-year-old girl. Warm light-tan skin, straight dark brown hair falling
+      just past her shoulders, round dark brown eyes. Yellow raincoat.
+  milo:
+    desc: >
+      4-year-old boy, Nora's little brother and closely resembling her: same
+      light-tan skin, same dark brown hair worn short, smaller rounder face,
+      round dark brown eyes. Blue raincoat. Toddler proportions — bigger head
+      and shorter legs than Nora.
+      Always holds an adult's hand or Nora's when crossing a street.
+
+# A pair rule fires automatically whenever a page casts every character it
+# names. This is how siblings are kept looking related without repeating it in
+# every scene.
+pair_rules:
+  - when: [nora, milo]
+    text: >
+      IMPORTANT: these two are siblings and must look alike — same face shape,
+      same skin tone, same dark brown hair colour. Milo is a small
+      four-year-old with toddler proportions; Nora is seven and noticeably
+      taller.
+
+# Context rules attach by tag, so one sentence can cover every page that
+# shares a condition instead of being pasted into each `scene:`.
+context_rules:
+  wet: >
+    Everything outdoors is soaked: standing puddles, dark damp patches, and
+    wet reflective surfaces catching the light. Boots are muddy and raincoats
+    are beaded with water.
+
+light:
+  morning: >
+    Flat grey overcast light, rain falling steadily, cool blue-grey tones,
+    wet reflective surfaces.
+  midday: >
+    Bright direct midday sun after rain, clear warm light, crisp shadows,
+    everything still wet and glistening.
+  afternoon: >
+    Low golden late-afternoon light, long soft shadows, warm highlights on
+    wet surfaces.
+
+# ------------------------------------------------------------
+# MANUSCRIPT — the mirror of the prose, keyed by manuscript page. When the
+# prose changes, update this in the same commit. A folded `>` block has no
+# interior blank line and so lays out as the single paragraph it is; use `|`
+# when a page has real structure.
+# ------------------------------------------------------------
+manuscript:
+  1: >
+    It rained all morning. Nora and her little brother Milo pulled on their
+    raincoats and stood at the window, watching the water slide down the glass
+    in wiggly lines.
+  2: >
+    By lunchtime the rain stopped. They went outside, where every crack in the
+    sidewalk had turned into a tiny river running toward the corner.
+  3: >
+    Then the sun came out and warmed the puddles. Thin wisps of steam rose up
+    off the wet street and disappeared into the sky.
+  4: >
+    They followed the little streams down the block to the creek, which was
+    rushing and brown and fuller than they had ever seen it.
+  5: >
+    When they walked home, the puddles were gone. "So where did it all go?"
+    Milo asked. Nora pointed up at the clouds.
+
+# ------------------------------------------------------------
+# PAGES = illustration slots, in reading order. `book_page:` points at the
+# manuscript page above. Keep each cast to three characters or fewer with
+# char_refs, per the 4-ref ceiling — a wider group shot relies on the
+# `characters:` text alone for anyone past that.
+#
+# `pitfalls:` are NOT part of the prompt. They are escalation only, appended
+# by --strict. Start loose; add a pitfall only once the page has actually
+# failed that way.
+# ------------------------------------------------------------
+pages:
+  1:
+    book_page: 1
+    distance: WIDE
+    light: morning
+    cast: [nora, milo]
+    scene: >
+      A wide view of a house window from inside, rain streaming down the glass
+      in wiggly lines, grey sky beyond. Two children stand at the sill with
+      their backs half to us, faces turned toward the glass: a 7-year-old girl
+      in a yellow raincoat and her much smaller 4-year-old brother in a blue
+      one, hoods down. Warm lamp light inside, cool grey light outside.
+    pitfalls:
+      - >
+        The rain on the glass is running in thin streaks, not a solid sheet of
+        water or a fog.
+      - The two children are clearly different ages; the boy is much smaller.
+
+  2:
+    book_page: 2
+    distance: MID
+    light: morning
+    cast: [nora, milo]
+    tags: [wet]
+    scene: >
+      A residential sidewalk right after the rain, seen at child height. Two
+      children in raincoats and rubber boots stand in the middle of a long
+      puddle that fills the whole width of the frame, the girl mid-jump with
+      both feet off the ground and water spraying up, the smaller boy watching
+      her with his mouth open in a grin. Trees and parked cars out of focus
+      behind them.
+    pitfalls:
+      - >
+        The puddle is shallow, clear and reflective — the children's boots
+        stand in it, not a river or a lake.
+      - >
+        The boy is not jumping; only the girl has both feet off the ground.
+
+  3:
+    book_page: 3
+    distance: MID
+    light: midday
+    cast: [nora, milo]
+    tags: [wet]
+    scene: >
+      A quiet street after the rain, warm sun breaking through. Two children
+      in raincoats stand side by side on the dry part of the pavement, looking
+      down at a shrinking puddle. Thin white wisps of steam rise from the
+      puddle's surface and drift upward out of the top of the frame. Long soft
+      shadows stretch behind them.
+    pitfalls:
+      - >
+        The steam is thin and wispy and clearly rising from the puddle, not
+        smoke from a fire and not fog filling the whole scene.
+      - The ground around the puddle is dry and sunlit, not still raining.
+
+  4:
+    book_page: 4
+    distance: WIDE
+    light: afternoon
+    cast: [nora]
+    tags: [wet]
+    scene: >
+      A small creek seen from the bank, running fast and brown between grassy
+      edges after heavy rain. A 7-year-old girl in a yellow raincoat stands on
+      the bank in the left third of the frame, one hand on a tree trunk,
+      leaning forward to watch the water. Ripples and small white flecks where
+      the current breaks. Low golden light, long shadows.
+    pitfalls:
+      - >
+        The water is fast, brown and opaque with rain — not clear, not blue,
+        not a still pond.
+      - >
+        The girl stands back from the edge on the bank; she is not in the
+        water and not wading.
+
+  5:
+    book_page: 5
+    distance: CLOSE
+    light: afternoon
+    cast: [nora, milo]
+    tags: [wet]
+    scene: >
+      A close view from behind of two children in raincoats standing on a dry
+      sidewalk, heads tipped back, looking up. The smaller boy in blue has
+      lifted one arm to point at the sky; the taller girl in yellow stands
+      beside him. Above them, tall soft grey-white clouds fill the upper half
+      of the frame, with warm late-afternoon light catching their edges. The
+      pavement below them is dry, the puddles gone.
+    pitfalls:
+      - >
+        Both children look up and away from the camera — this is a
+        over-the-shoulder view, not a face-on portrait.
+      - >
+        The clouds are ordinary soft grey-white rain clouds, not a storm,
+        not sunset-coloured, and no rain is falling from them.
